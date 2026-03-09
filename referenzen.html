@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Referenzen</title>
+  <style>
+    :root{
+      --primary:#1A4F95;
+      --primary-dark:#143d74;
+      --accent:#f3f6fb;
+      --border:#d5dbe5;
+      --text:#243447;
+      --muted:#5f6b7a;
+      --white:#ffffff;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: Arial, Helvetica, sans-serif;
+      color:var(--text);
+      background:#fff;
+    }
+    .wrap{
+      max-width:1200px;
+      margin:0 auto;
+      padding:16px 8px;
+    }
+    .toolbar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      align-items:end;
+      justify-content:space-between;
+      margin-bottom:12px;
+    }
+    .control-group{
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      align-items:end;
+    }
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width:220px;
+    }
+    .field.small{
+      min-width:140px;
+    }
+    label{
+      font-size:14px;
+      font-weight:700;
+      color:var(--muted);
+    }
+    input[type="search"], select{
+      height:40px;
+      padding:8px 12px;
+      border:1px solid var(--border);
+      border-radius:6px;
+      background:#fff;
+      color:var(--text);
+      font-size:15px;
+    }
+    .status{
+      font-size:14px;
+      color:var(--muted);
+      padding-bottom:2px;
+    }
+    .table-wrap{
+      width:100%;
+      overflow-x:auto;
+      border:1px solid var(--border);
+      border-radius:8px;
+      background:#fff;
+    }
+    table{
+      width:100%;
+      min-width:760px;
+      border-collapse:collapse;
+    }
+    thead th{
+      background:var(--primary);
+      color:var(--white);
+      text-align:left;
+      padding:12px 14px;
+      font-size:15px;
+      position:sticky;
+      top:0;
+      cursor:pointer;
+      user-select:none;
+      white-space:nowrap;
+    }
+    thead th .sort{
+      display:inline-block;
+      margin-left:8px;
+      opacity:.75;
+      font-size:12px;
+      min-width:14px;
+      text-align:center;
+    }
+    tbody td{
+      padding:11px 14px;
+      border-top:1px solid var(--border);
+      vertical-align:top;
+      font-size:15px;
+    }
+    tbody tr:nth-child(even){ background:var(--accent); }
+    tbody tr:hover{ background:#eaf1fb; }
+    .pagination{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      align-items:center;
+      justify-content:space-between;
+      margin-top:12px;
+    }
+    .pagination .buttons{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    button{
+      height:38px;
+      min-width:38px;
+      padding:0 12px;
+      border:1px solid var(--border);
+      border-radius:6px;
+      background:#fff;
+      color:var(--text);
+      cursor:pointer;
+      font-size:14px;
+    }
+    button:hover:not(:disabled){
+      border-color:var(--primary);
+      color:var(--primary);
+    }
+    button.active{
+      background:var(--primary);
+      border-color:var(--primary);
+      color:#fff;
+    }
+    button:disabled{
+      opacity:.45;
+      cursor:not-allowed;
+    }
+    .empty{
+      padding:22px 14px;
+      color:var(--muted);
+      font-style:italic;
+    }
+    @media (max-width: 680px){
+      .wrap{padding:12px 0}
+      .toolbar{padding:0 8px}
+      .status{padding:0 8px}
+      .pagination{padding:0 8px}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <div class="control-group">
+        <div class="field">
+          <label for="searchInput">Suche</label>
+          <input id="searchInput" type="search" placeholder="Gemeinde, Fahrzeug, Fahrgestell, Aufbau">
+        </div>
+        <div class="field small">
+          <label for="pageSize">Einträge pro Seite</label>
+          <select id="pageSize">
+            <option value="10">10</option>
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="9999">Alle</option>
+          </select>
+        </div>
+      </div>
+      <div id="status" class="status">Daten werden geladen …</div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="referenzenTable">
+        <thead>
+          <tr id="tableHead"></tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr><td class="empty" colspan="4">Daten werden geladen …</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination">
+      <div id="info" class="status"></div>
+      <div id="paginationButtons" class="buttons"></div>
+    </div>
+  </div>
+
+  <script>
+    const csvUrl = 'referenzen.csv';
+
+    let headers = [];
+    let allRows = [];
+    let filteredRows = [];
+    let currentPage = 1;
+    let pageSize = 25;
+    let sortColumn = 0;
+    let sortDirection = 'asc';
+
+    const searchInput = document.getElementById('searchInput');
+    const pageSizeSelect = document.getElementById('pageSize');
+    const tableHead = document.getElementById('tableHead');
+    const tableBody = document.getElementById('tableBody');
+    const info = document.getElementById('info');
+    const status = document.getElementById('status');
+    const paginationButtons = document.getElementById('paginationButtons');
+
+    function parseCSV(text) {
+      const rows = [];
+      let row = [];
+      let value = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const next = text[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && next === '"') {
+            value += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          row.push(value);
+          value = '';
+        } else if ((char === '\n' || char === '\r') && !inQuotes) {
+          if (char === '\r' && next === '\n') i++;
+          row.push(value);
+          if (row.some(cell => String(cell).trim() !== '')) rows.push(row);
+          row = [];
+          value = '';
+        } else {
+          value += char;
+        }
+      }
+
+      if (value.length || row.length) {
+        row.push(value);
+        if (row.some(cell => String(cell).trim() !== '')) rows.push(row);
+      }
+
+      return rows;
+    }
+
+    function normalize(text) {
+      return String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function compareValues(a, b) {
+      const valA = String(a[sortColumn] || '');
+      const valB = String(b[sortColumn] || '');
+      const result = valA.localeCompare(valB, 'de', { numeric: true, sensitivity: 'base' });
+      return sortDirection === 'asc' ? result : -result;
+    }
+
+    function applyFilters() {
+      const query = normalize(searchInput.value.trim());
+
+      filteredRows = allRows.filter(row => {
+        if (!query) return true;
+        return row.some(cell => normalize(cell).includes(query));
+      });
+
+      filteredRows.sort(compareValues);
+      currentPage = 1;
+      renderTable();
+    }
+
+    function renderHead() {
+      tableHead.innerHTML = '';
+      headers.forEach((header, index) => {
+        const th = document.createElement('th');
+        th.innerHTML = '<span>' + header + '</span><span class="sort">' + getSortSymbol(index) + '</span>';
+        th.addEventListener('click', () => {
+          if (sortColumn === index) {
+            sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+          } else {
+            sortColumn = index;
+            sortDirection = 'asc';
+          }
+          filteredRows.sort(compareValues);
+          renderTable();
+          renderHead();
+        });
+        tableHead.appendChild(th);
+      });
+    }
+
+    function getSortSymbol(index) {
+      if (sortColumn !== index) return '↕';
+      return sortDirection === 'asc' ? '▲' : '▼';
+    }
+
+    function renderTable() {
+      tableBody.innerHTML = '';
+
+      const total = filteredRows.length;
+      const safePageSize = pageSize === 9999 ? total || 1 : pageSize;
+      const totalPages = Math.max(1, Math.ceil(total / safePageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+
+      const start = total === 0 ? 0 : (currentPage - 1) * safePageSize;
+      const end = Math.min(start + safePageSize, total);
+      const rowsToShow = filteredRows.slice(start, end);
+
+      if (!rowsToShow.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = headers.length || 4;
+        td.className = 'empty';
+        td.textContent = 'Keine passenden Einträge gefunden.';
+        tr.appendChild(td);
+        tableBody.appendChild(tr);
+      } else {
+        rowsToShow.forEach(row => {
+          const tr = document.createElement('tr');
+          row.forEach(cell => {
+            const td = document.createElement('td');
+            td.textContent = cell;
+            tr.appendChild(td);
+          });
+          tableBody.appendChild(tr);
+        });
+      }
+
+      status.textContent = total + ' Einträge';
+      if (total === 0) {
+        info.textContent = 'Keine Einträge';
+      } else {
+        info.textContent = 'Zeige ' + (start + 1) + ' bis ' + end + ' von ' + total + ' Einträgen';
+      }
+
+      renderPagination(totalPages);
+    }
+
+    function renderPagination(totalPages) {
+      paginationButtons.innerHTML = '';
+
+      const prev = document.createElement('button');
+      prev.textContent = 'Zurück';
+      prev.disabled = currentPage === 1;
+      prev.addEventListener('click', () => {
+        currentPage--;
+        renderTable();
+      });
+      paginationButtons.appendChild(prev);
+
+      const maxPageButtons = 7;
+      let startPage = Math.max(1, currentPage - 3);
+      let endPage = Math.min(totalPages, startPage + maxPageButtons - 1);
+
+      if (endPage - startPage + 1 < maxPageButtons) {
+        startPage = Math.max(1, endPage - maxPageButtons + 1);
+      }
+
+      for (let p = startPage; p <= endPage; p++) {
+        const btn = document.createElement('button');
+        btn.textContent = p;
+        if (p === currentPage) btn.classList.add('active');
+        btn.addEventListener('click', () => {
+          currentPage = p;
+          renderTable();
+        });
+        paginationButtons.appendChild(btn);
+      }
+
+      const next = document.createElement('button');
+      next.textContent = 'Weiter';
+      next.disabled = currentPage === totalPages;
+      next.addEventListener('click', () => {
+        currentPage++;
+        renderTable();
+      });
+      paginationButtons.appendChild(next);
+    }
+
+    async function loadData() {
+      try {
+        const response = await fetch(csvUrl, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('CSV-Datei konnte nicht geladen werden.');
+        }
+
+        const text = await response.text();
+        const rows = parseCSV(text.trim());
+
+        if (!rows.length) {
+          throw new Error('CSV-Datei ist leer.');
+        }
+
+        headers = rows[0];
+        allRows = rows.slice(1);
+        filteredRows = [...allRows];
+
+        renderHead();
+        filteredRows.sort(compareValues);
+        renderTable();
+      } catch (error) {
+        tableBody.innerHTML = '<tr><td class="empty" colspan="4">Fehler beim Laden der Tabelle.</td></tr>';
+        status.textContent = 'Fehler';
+        info.textContent = '';
+        paginationButtons.innerHTML = '';
+        console.error(error);
+      }
+    }
+
+    searchInput.addEventListener('input', applyFilters);
+    pageSizeSelect.addEventListener('change', () => {
+      pageSize = Number(pageSizeSelect.value);
+      currentPage = 1;
+      renderTable();
+    });
+
+    loadData();
+  </script>
+</body>
+</html>
